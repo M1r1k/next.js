@@ -24,6 +24,7 @@ export default class PageLoader {
     this.prefetchCache = new Set()
     this.pageRegisterEvents = mitt()
     this.loadingRoutes = {}
+    this.loadedChunks = {}
   }
 
   normalizeRoute (route) {
@@ -70,10 +71,38 @@ export default class PageLoader {
 
       // Load the script if not asked to load yet.
       if (!this.loadingRoutes[route]) {
+        this.loadChunks(route)
         this.loadScript(route)
         this.loadingRoutes[route] = true
       }
     })
+  }
+
+  loadChunks (route) {
+    route = this.normalizeRoute(route)
+    if (window.__NEXT_DATA__.buildManifest.pages[route]) {
+      window.__NEXT_DATA__.buildManifest.pages[route].map((src) => {
+        if (
+          !this.loadChunks[src] &&
+          src.match(/\.js$/) &&
+          !document.querySelector(`script[src="${this.assetPrefix}/_next/${src}"]`)
+        ) {
+          const script = document.createElement('script')
+          const url = `${this.assetPrefix}/_next/${src}`
+          script.crossOrigin = process.crossOrigin
+          script.src = url
+          script.onerror = () => {
+            const error = new Error(`Error when loading chunk ${src} for route ${route}`)
+            error.code = 'PAGE_LOAD_ERROR'
+            this.pageRegisterEvents.emit(route, { error })
+          }
+
+          document.body.appendChild(script)
+        } else {
+          this.loadChunks[src] = true
+        }
+      })
+    }
   }
 
   loadScript (route) {
